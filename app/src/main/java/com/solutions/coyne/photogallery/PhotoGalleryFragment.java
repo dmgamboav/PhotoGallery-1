@@ -10,8 +10,12 @@ import android.support.annotation.Nullable;
 import android.support.v4.app.Fragment;
 import android.support.v7.widget.GridLayoutManager;
 import android.support.v7.widget.RecyclerView;
+import android.support.v7.widget.SearchView;
 import android.util.Log;
 import android.view.LayoutInflater;
+import android.view.Menu;
+import android.view.MenuInflater;
+import android.view.MenuItem;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.ImageView;
@@ -36,6 +40,7 @@ public class PhotoGalleryFragment extends Fragment {
     private int visibleThreshold = 5;
     int firstVisibleItem, visibleItemCount, totalItemCount;
     int page =1;
+    private String query;
 
     private ThumbnailDownloader<PhotoHolder> thumbnailDownloader;
 
@@ -47,7 +52,8 @@ public class PhotoGalleryFragment extends Fragment {
     public void onCreate(@Nullable Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setRetainInstance(true);
-        new FetchItemsTask().execute(page);
+        setHasOptionsMenu(true);
+        new FetchItemsTask().execute(String.valueOf(page), null);
 
         Handler responseHandler = new Handler();
         thumbnailDownloader = new ThumbnailDownloader<>(responseHandler);
@@ -63,6 +69,31 @@ public class PhotoGalleryFragment extends Fragment {
         thumbnailDownloader.start();
         thumbnailDownloader.getLooper();
         Log.i(TAG, "Background thread started");
+    }
+
+    @Override
+    public void onCreateOptionsMenu(Menu menu, MenuInflater inflater) {
+        super.onCreateOptionsMenu(menu, inflater);
+        inflater.inflate(R.menu.fragment_photo_gallery, menu);
+
+        MenuItem searchItem = menu.findItem(R.id.menu_item_search);
+        final SearchView searchView = (SearchView)searchItem.getActionView();
+
+        searchView.setOnQueryTextListener(new SearchView.OnQueryTextListener() {
+            @Override
+            public boolean onQueryTextSubmit(String s) {
+                Log.d(TAG, "QueryTextSubmit: "+s);
+                page = 1;
+                query = s;
+                updateItems(query);
+                return true;
+            }
+
+            @Override
+            public boolean onQueryTextChange(String newText) {
+                return false;
+            }
+        });
     }
 
     @Nullable
@@ -97,7 +128,7 @@ public class PhotoGalleryFragment extends Fragment {
                     // Do something
 
                     loading = true;
-                    new FetchItemsTask().execute(page);
+                    new FetchItemsTask().execute(String.valueOf(page), query);
                 }
             }
         });
@@ -111,6 +142,10 @@ public class PhotoGalleryFragment extends Fragment {
         if(isAdded()){
             photoRecyclerView.setAdapter(new PhotoAdapter(items));
         }
+    }
+
+    private void updateItems(String query){
+        new FetchItemsTask().execute(String.valueOf(page), query);
     }
 
     @Override
@@ -166,15 +201,27 @@ public class PhotoGalleryFragment extends Fragment {
         }
     }
 
-    private class FetchItemsTask extends AsyncTask<Integer, Void, List<GalleryItem>>{
+    private class FetchItemsTask extends AsyncTask<String, Void, List<GalleryItem>>{
         @Override
-        protected List<GalleryItem> doInBackground(Integer... integers) {
-            return new FlickrFetchr().fetchItems(integers[0]);
+        protected List<GalleryItem> doInBackground(String... strings) {
+            String query = null;
+            if(strings.length >1){// adds a query parameter for search
+                query = strings[1];
+            }
+            if(query == null){
+                return new FlickrFetchr().fetchRecentPhotos(strings[0]);
+            }else{
+                return new FlickrFetchr().searchPhotos(query, strings[0]);
+            }
         }
-
         @Override
         protected void onPostExecute(List<GalleryItem> returnItems) {
-            items.addAll(returnItems);
+            if(page > 1) {
+                items.addAll(returnItems);
+            }else{
+                items.clear();
+                items.addAll(returnItems);
+            }
             setupAdapter();
         }
     }
