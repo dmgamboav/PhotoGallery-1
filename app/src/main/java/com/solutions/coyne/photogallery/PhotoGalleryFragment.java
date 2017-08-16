@@ -1,5 +1,7 @@
 package com.solutions.coyne.photogallery;
 
+import android.content.Context;
+import android.content.Intent;
 import android.graphics.Bitmap;
 import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.Drawable;
@@ -20,6 +22,9 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.widget.ImageView;
 import android.widget.TextView;
+
+import com.solutions.coyne.photogallery.Service.PollService;
+import com.squareup.picasso.Picasso;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -42,7 +47,7 @@ public class PhotoGalleryFragment extends Fragment {
     int page =1;
     private String query;
 
-    private ThumbnailDownloader<PhotoHolder> thumbnailDownloader;
+//    private ThumbnailDownloader<PhotoHolder> thumbnailDownloader;
 
     public static PhotoGalleryFragment newInstance(){
         return new PhotoGalleryFragment();
@@ -55,19 +60,23 @@ public class PhotoGalleryFragment extends Fragment {
         setHasOptionsMenu(true);
         new FetchItemsTask().execute(String.valueOf(page), null);
 
-        Handler responseHandler = new Handler();
-        thumbnailDownloader = new ThumbnailDownloader<>(responseHandler);
-        thumbnailDownloader.setThumbnailDownloaderListener(
-                new ThumbnailDownloader.ThumbnailDownloadListener<PhotoHolder>(){
-                    @Override
-                    public void onThumbnailDownloaded(PhotoHolder target, Bitmap thumbnail) {
-                        Drawable drawable = new BitmapDrawable(getResources(), thumbnail);
-                        target.bindDrawable(drawable);
-                    }
-                });
+//        Intent i = PollService.newIntent(getActivity());
+//        getActivity().startService(i);
+//        PollService.setServiceAlarm(getActivity(), true);
 
-        thumbnailDownloader.start();
-        thumbnailDownloader.getLooper();
+        Handler responseHandler = new Handler();
+//        thumbnailDownloader = new ThumbnailDownloader<>(responseHandler);
+//        thumbnailDownloader.setThumbnailDownloaderListener(
+//                new ThumbnailDownloader.ThumbnailDownloadListener<PhotoHolder>(){
+//                    @Override
+//                    public void onThumbnailDownloaded(PhotoHolder target, Bitmap thumbnail) {
+//                        Drawable drawable = new BitmapDrawable(getResources(), thumbnail);
+//                        target.bindDrawable(drawable);
+//                    }
+//                });
+//
+//        thumbnailDownloader.start();
+//        thumbnailDownloader.getLooper();
         Log.i(TAG, "Background thread started");
     }
 
@@ -76,13 +85,14 @@ public class PhotoGalleryFragment extends Fragment {
         super.onCreateOptionsMenu(menu, inflater);
         inflater.inflate(R.menu.fragment_photo_gallery, menu);
 
-        MenuItem searchItem = menu.findItem(R.id.menu_item_search);
+        final MenuItem searchItem = menu.findItem(R.id.menu_item_search);
         final SearchView searchView = (SearchView)searchItem.getActionView();
 
         searchView.setOnQueryTextListener(new SearchView.OnQueryTextListener() {
             @Override
             public boolean onQueryTextSubmit(String s) {
                 Log.d(TAG, "QueryTextSubmit: "+s);
+                QueryPreferences.setStoredQuery(getActivity(), s);
                 page = 1;
                 query = s;
                 updateItems(query);
@@ -94,6 +104,38 @@ public class PhotoGalleryFragment extends Fragment {
                 return false;
             }
         });
+
+        searchView.setOnSearchClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                String query = QueryPreferences.getStoredQuery(getActivity());
+                searchView.setQuery(query, false);
+            }
+        });
+
+        MenuItem toggleItem = menu.findItem(R.id.menu_item_toggle_polling);
+        if(PollService.isServiceAlarmOn(getActivity())){
+            toggleItem.setTitle(R.string.stop_polling);
+        }else{
+            toggleItem.setTitle(R.string.start_polling);
+        }
+    }
+
+    @Override
+    public boolean onOptionsItemSelected(MenuItem item) {
+        switch (item.getItemId()){
+            case R.id.menu_item_clear:
+                QueryPreferences.setStoredQuery(getActivity(), null);
+                updateItems(null);
+                return true;
+            case R.id.menu_item_toggle_polling:
+                boolean shouldStartAlarm = !PollService.isServiceAlarmOn(getActivity());
+                PollService.setServiceAlarm(getActivity(), shouldStartAlarm);
+                getActivity().invalidateOptionsMenu();
+                return true;
+            default:
+                return super.onOptionsItemSelected(item);
+        }
     }
 
     @Nullable
@@ -140,7 +182,7 @@ public class PhotoGalleryFragment extends Fragment {
 
     private void setupAdapter(){
         if(isAdded()){
-            photoRecyclerView.setAdapter(new PhotoAdapter(items));
+            photoRecyclerView.setAdapter(new PhotoAdapter(getActivity(), items));
         }
     }
 
@@ -151,13 +193,13 @@ public class PhotoGalleryFragment extends Fragment {
     @Override
     public void onDestroyView() {
         super.onDestroyView();
-        thumbnailDownloader.clearQueue();
+//        thumbnailDownloader.clearQueue();
     }
 
     @Override
     public void onDestroy() {
         super.onDestroy();
-        thumbnailDownloader.quit();
+//        thumbnailDownloader.quit();
         Log.i(TAG, "Background thread Destroyed");
     }
 
@@ -176,8 +218,10 @@ public class PhotoGalleryFragment extends Fragment {
 
     private class PhotoAdapter extends RecyclerView.Adapter<PhotoHolder>{
         private List<GalleryItem> galleryItemList;
+        private Context context;
 
-        public PhotoAdapter(List<GalleryItem> galleryItems){
+        public PhotoAdapter(Context context, List<GalleryItem> galleryItems){
+            this.context = context;
             galleryItemList = galleryItems;
         }
         @Override
@@ -190,9 +234,14 @@ public class PhotoGalleryFragment extends Fragment {
         @Override
         public void onBindViewHolder(PhotoHolder holder, int position) {
             GalleryItem galleryItem = galleryItemList.get(position);
-            Drawable placeholder = getResources().getDrawable(R.drawable.bill_up_close);
-            holder.bindDrawable(placeholder);
-            thumbnailDownloader.queueThumbnail(holder, galleryItem.getmUrl());
+//            Drawable placeholder = getResources().getDrawable(R.drawable.bill_up_close);
+//            holder.bindDrawable(placeholder);
+//            thumbnailDownloader.queueThumbnail(holder, galleryItem.getmUrl());//Use Picasso or Glide for future releases
+            Picasso.with(context)
+                    .load(galleryItem.getmUrl())
+//                    .placeholder(R.drawable.bill_up_close)
+                    .error(R.drawable.bill_up_close)
+                    .into(holder.itemImageView);
         }
 
         @Override
